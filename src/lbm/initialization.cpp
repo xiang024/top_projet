@@ -51,10 +51,6 @@ void setup_init_state_global_poiseuille_profile(Mesh* mesh, lbm_mesh_type_t* mes
         cell[k]              = compute_equilibrium_profile(v, rho, k);
         // Mark as standard fluid
         *(lbm_cell_type_t_get_cell(mesh_type, i, j)) = CELL_FUILD;
-        // This is a try to init the fluid with a null speed except on the left border.
-        if (i > 1) {
-          Mesh_get_cell(mesh, i, j)[k] = equil_weight[k];
-        }
       }
     }
   }
@@ -67,14 +63,14 @@ void setup_init_state_border(Mesh* mesh, lbm_mesh_type_t* mesh_type, const lbm_c
   // Setup left border type
   if (mesh_comm->left_id == -1) {
     for (size_t j = 1; j < mesh->height - 1; j++) {
-      *(lbm_cell_type_t_get_cell(mesh_type, 0, j)) = CELL_LEFT_IN;
+      *(lbm_cell_type_t_get_cell(mesh_type, 1, j)) = CELL_LEFT_IN;
     }
   }
 
   // Setup right border type
   if (mesh_comm->right_id == -1) {
     for (size_t j = 1; j < mesh->height - 1; j++) {
-      *(lbm_cell_type_t_get_cell(mesh_type, mesh->width - 1, j)) = CELL_RIGHT_OUT;
+      *(lbm_cell_type_t_get_cell(mesh_type, mesh->width - 2, j)) = CELL_RIGHT_OUT;
     }
   }
 
@@ -83,9 +79,9 @@ void setup_init_state_border(Mesh* mesh, lbm_mesh_type_t* mesh_type, const lbm_c
     for (size_t i = 0; i < mesh->width; i++) {
       for (size_t k = 0; k < DIRECTIONS; k++) {
         // Compute equilibrium.
-        Mesh_get_cell(mesh, i, 0)[k] = compute_equilibrium_profile(v, rho, k);
+        Mesh_get_cell(mesh, i, 1)[k] = compute_equilibrium_profile(v, rho, k);
         // Mark as bounce back
-        *(lbm_cell_type_t_get_cell(mesh_type, i, 0)) = CELL_BOUNCE_BACK;
+        *(lbm_cell_type_t_get_cell(mesh_type, i, 1)) = CELL_BOUNCE_BACK;
       }
     }
   }
@@ -95,9 +91,9 @@ void setup_init_state_border(Mesh* mesh, lbm_mesh_type_t* mesh_type, const lbm_c
     for (size_t i = 0; i < mesh->width; i++) {
       for (size_t k = 0; k < DIRECTIONS; k++) {
         // Compute equilibrium.
-        Mesh_get_cell(mesh, i, mesh->height - 1)[k] = compute_equilibrium_profile(v, rho, k);
+        Mesh_get_cell(mesh, i, mesh->height - 2)[k] = compute_equilibrium_profile(v, rho, k);
         // Mark as bounce back
-        *(lbm_cell_type_t_get_cell(mesh_type, i, mesh->height - 1)) = CELL_BOUNCE_BACK;
+        *(lbm_cell_type_t_get_cell(mesh_type, i, mesh->height - 2)) = CELL_BOUNCE_BACK;
       }
     }
   }

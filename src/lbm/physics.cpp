@@ -58,6 +58,7 @@ double get_cell_density(const lbm_mesh_cell_t cell) {
 void get_cell_velocity(Vector v, const lbm_mesh_cell_t cell, double cell_density) {
   assert(v != NULL);
   assert(cell != NULL);
+  const double eps = 1e-12;
 
   // Loop on all dimensions
   for (size_t d = 0; d < DIMENSIONS; d++) {
@@ -69,7 +70,7 @@ void get_cell_velocity(Vector v, const lbm_mesh_cell_t cell, double cell_density
     }
 
     // Normalize
-    v[d] /= cell_density;
+    v[d] = (cell_density > eps) ? (v[d] / cell_density) : 0.0;
   }
 }
 
@@ -128,7 +129,8 @@ void compute_inflow_zou_he_poiseuille_distr(const Mesh* mesh, lbm_mesh_cell_t ce
   // Set macroscopic fluid info
   // Poiseuille distribution on X and null on Y
   // We just want the norm, so `v = v_x`
-  const double v = helper_compute_poiseuille(id_y, mesh->height);
+  const double v = helper_compute_poiseuille(id_y, MESH_HEIGHT);
+
 
   // Compute rho from U and inner flow on surface
   const double rho = (cell[0] + cell[2] + cell[4] + 2 * (cell[3] + cell[6] + cell[7])) / (1.0 - v);
