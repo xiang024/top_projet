@@ -91,12 +91,20 @@ double compute_equilibrium_profile(Vector velocity, double density, int directio
 }
 
 void compute_cell_collision(lbm_mesh_cell_t cell_out, const lbm_mesh_cell_t cell_in) {
-  // Compute macroscopic values
-  const double density = get_cell_density(cell_in);
-  Vector v;
-  get_cell_velocity(v, cell_in, density);
+  const double eps = 1e-12;
+
+  // Compute macroscopic values directly in the hot path to reduce helper-call overhead.
+  const double density = cell_in[0] + cell_in[1] + cell_in[2] + cell_in[3] + cell_in[4]
+                       + cell_in[5] + cell_in[6] + cell_in[7] + cell_in[8];
+
+  Vector v = {0.0, 0.0};
+  if (density > eps) {
+    v[0] = (cell_in[1] - cell_in[3] + cell_in[5] - cell_in[6] - cell_in[7] + cell_in[8]) / density;
+    v[1] = (cell_in[2] - cell_in[4] + cell_in[5] + cell_in[6] - cell_in[7] - cell_in[8]) / density;
+  }
 
   // Loop on microscopic directions
+  #pragma omp simd
   for (size_t k = 0; k < DIRECTIONS; k++) {
     // Compute f at equilibrium
     double f_eq = compute_equilibrium_profile(v, density, k);
@@ -167,21 +175,26 @@ void compute_outflow_zou_he_const_density(lbm_mesh_cell_t cell) {
 }
 
 void special_cells(Mesh* mesh, lbm_mesh_type_t* mesh_type, const lbm_comm_t* mesh_comm) {
-  // Loop on all inner cells
+  // Handle left inflow boundary in a dedicated linear pass.
+  for (size_t j = 1; j < mesh->height - 1; j++) {
+    if (*(lbm_cell_type_t_get_cell(mesh_type, 1, j)) == CELL_LEFT_IN) {
+      compute_inflow_zou_he_poiseuille_distr(mesh, Mesh_get_cell(mesh, 1, j), j + mesh_comm->y);
+    }
+  }
+
+  // Handle right outflow boundary in a dedicated linear pass.
+  for (size_t j = 1; j < mesh->height - 1; j++) {
+    if (*(lbm_cell_type_t_get_cell(mesh_type, mesh->width - 2, j)) == CELL_RIGHT_OUT) {
+      compute_outflow_zou_he_const_density(Mesh_get_cell(mesh, mesh->width - 2, j));
+    }
+  }
+
+  // Loop on all inner cells for bounce-back cells (obstacle and top/bottom walls).
+  #pragma omp parallel for schedule(static)
   for (size_t i = 1; i < mesh->width - 1; i++) {
     for (size_t j = 1; j < mesh->height - 1; j++) {
-      switch (*(lbm_cell_type_t_get_cell(mesh_type, i, j))) {
-      case CELL_FUILD:
-        break;
-      case CELL_BOUNCE_BACK:
+      if (*(lbm_cell_type_t_get_cell(mesh_type, i, j)) == CELL_BOUNCE_BACK) {
         compute_bounce_back(Mesh_get_cell(mesh, i, j));
-        break;
-      case CELL_LEFT_IN:
-        compute_inflow_zou_he_poiseuille_distr(mesh, Mesh_get_cell(mesh, i, j), j + mesh_comm->y);
-        break;
-      case CELL_RIGHT_OUT:
-        compute_outflow_zou_he_const_density(Mesh_get_cell(mesh, i, j));
-        break;
       }
     }
   }
@@ -192,27 +205,38 @@ void collision(Mesh* mesh_out, const Mesh* mesh_in) {
   assert(mesh_in->height == mesh_out->height);
 
   // Loop on all inner cells
-  for (size_t j = 1; j < mesh_in->height - 1; j++) {
-    for (size_t i = 1; i < mesh_in->width - 1; i++) {
-      compute_cell_collision(Mesh_get_cell(mesh_out, i, j), Mesh_get_cell(mesh_in, i, j));
+  #pragma omp parallel for schedule(static)
+  for (size_t i = 1; i < mesh_in->width - 1; i++) {
+    for (size_t j = 1; j < mesh_in->height - 1; j++) {
+      lbm_mesh_cell_t cell_out       = Mesh_get_cell(mesh_out, i, j);
+      const lbm_mesh_cell_t cell_in  = Mesh_get_cell(mesh_in, i, j);
+      compute_cell_collision(cell_out, cell_in);
     }
   }
 }
 
 void propagation(Mesh* mesh_out, const Mesh* mesh_in) {
-  // Loop on all cells
-  for (size_t j = 0; j < mesh_out->height; j++) {
-    for (size_t i = 0; i < mesh_out->width; i++) {
-      // For all direction
-      for (size_t k = 0; k < DIRECTIONS; k++) {
-        // Compute destination point
-        ssize_t ii = (i + direction_matrix[k][0]);
-        ssize_t jj = (j + direction_matrix[k][1]);
-        // Propagate to neighboor nodes
-        if ((ii >= 0 && ii < mesh_out->width) && (jj >= 0 && jj < mesh_out->height)) {
-          Mesh_get_cell(mesh_out, ii, jj)[k] = Mesh_get_cell(mesh_in, i, j)[k];
-        }
+  const ssize_t width  = static_cast<ssize_t>(mesh_out->width);
+  const ssize_t height = static_cast<ssize_t>(mesh_out->height);
+
+  // Process each direction on its valid source rectangle to avoid bounds checks
+  // in the inner loops.
+  #pragma omp parallel
+{
+  for (size_t k = 0; k < DIRECTIONS; k++) {
+    const ssize_t dx = static_cast<ssize_t>(direction_matrix[k][0]);
+    const ssize_t dy = static_cast<ssize_t>(direction_matrix[k][1]);
+
+    const ssize_t i_begin = (dx < 0) ? -dx : 0;
+    const ssize_t i_end   = (dx > 0) ? (width - dx) : width;
+    const ssize_t j_begin = (dy < 0) ? -dy : 0;
+    const ssize_t j_end   = (dy > 0) ? (height - dy) : height;
+    #pragma omp for schedule(static) nowait
+    for (ssize_t i = i_begin; i < i_end; i++) {
+      for (ssize_t j = j_begin; j < j_end; j++) {
+        Mesh_get_cell(mesh_out, i + dx, j + dy)[k] = Mesh_get_cell(mesh_in, i, j)[k];
       }
     }
   }
+}
 }

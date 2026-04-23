@@ -107,7 +107,9 @@ int main(int argc, char* argv[]) {
   }
 
   // Barrier to wait for all processes before starting
-  MPI_Barrier(MPI_COMM_WORLD);
+  if (comm_size > 1) {
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
   if (rank == RANK_MASTER) {
     putc('\n', stdout);
   }
@@ -115,24 +117,32 @@ int main(int argc, char* argv[]) {
   // Time steps
   const double start_time = MPI_Wtime();
   for (ssize_t i = 1; i <= ITERATIONS; i++) {
-    if (rank == RANK_MASTER) {
-      fprintf(stderr, "\rStep: %6d/%6d", i, ITERATIONS);
+    if (rank == RANK_MASTER && (i == 1 || i == ITERATIONS || i % 100 == 0)) {
+      fprintf(stderr, "\rStep: %6ld/%6u", static_cast<long>(i), static_cast<unsigned>(ITERATIONS));
     }
     // Compute special actions (border, obstacle...)
     special_cells(&mesh, &mesh_type, &mesh_comm);
     // Need to wait all before doing next step
-    MPI_Barrier(MPI_COMM_WORLD);
+    if (comm_size > 1) {
+      MPI_Barrier(MPI_COMM_WORLD);
+    }
 
     // Compute collision term
     collision(&temp, &mesh);
     // Need to wait all before doing next step
-    MPI_Barrier(MPI_COMM_WORLD);
+    if (comm_size > 1) {
+      MPI_Barrier(MPI_COMM_WORLD);
+    }
 
     // Propagate values from node to neighboors
-    lbm_comm_halo_exchange(&mesh_comm, &temp);
+    if (comm_size > 1) {
+      lbm_comm_halo_exchange(&mesh_comm, &temp);
+    }
     propagation(&mesh, &temp);
     // Need to wait all before doing next step
-    MPI_Barrier(MPI_COMM_WORLD);
+    if (comm_size > 1) {
+      MPI_Barrier(MPI_COMM_WORLD);
+    }
 
     // Save step
     if (i % WRITE_STEP_INTERVAL == 0 && lbm_gbl_config.output_filename != NULL) {
@@ -144,7 +154,9 @@ int main(int argc, char* argv[]) {
   const uint64_t total_cells = static_cast<uint64_t>(MESH_WIDTH) * MESH_HEIGHT * comm_size;
   const double mlups         = (static_cast<double>(total_cells) * ITERATIONS) / (elapsed_time * 1e6);
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  if (comm_size > 1) {
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
   if (rank == RANK_MASTER) {
     if (fp != NULL) {
       close_file(fp);

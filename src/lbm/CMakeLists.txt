@@ -19,4 +19,11 @@ target_sources(
   PRIVATE config.cpp structures.cpp communications.cpp initialization.cpp physics.cpp
 )
 target_link_libraries(top.lbm-lib PRIVATE MPI::MPI_CXX OpenMP::OpenMP_CXX)
+target_compile_features(top.lbm-lib PUBLIC cxx_std_17)
+target_compile_options(
+  top.lbm-lib
+  PRIVATE
+    $<$<CONFIG:Release>:-O3;-march=native;-DNDEBUG>
+    $<$<CONFIG:RelWithDebInfo>:-O3;-march=native>
+)
 set_target_properties(top.lbm-lib PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)

@@ -8,6 +8,10 @@ project(
   HOMEPAGE_URL "https://dssgabriel.github.io/CHP203-TOP/project"
 )
 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 find_package(MPI 3.0 REQUIRED)
 find_package(OpenMP 4.0 REQUIRED)
 include(cmake/third-party.cmake)
