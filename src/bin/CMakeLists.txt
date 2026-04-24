@@ -1,5 +1,8 @@
 target_sources(top.lbm-exe PRIVATE main.cpp)
-target_link_libraries(top.lbm-exe PRIVATE top::lbm-lib MPI::MPI_CXX OpenMP::OpenMP_CXX)
+target_link_libraries(top.lbm-exe PRIVATE top::lbm-lib OpenMP::OpenMP_CXX)
+if(TOP_ENABLE_MPI)
+  target_link_libraries(top.lbm-exe PRIVATE MPI::MPI_CXX)
+endif()
 set_target_properties(top.lbm-exe PROPERTIES BUILD_RPATH ${CMAKE_BINARY_DIR}/lib)
 
 target_sources(top.display PRIVATE display.cpp)

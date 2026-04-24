@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include <mpi.h>
+#include <lbm/mpi.hpp>
 
 #include <lbm/structures.hpp>
 

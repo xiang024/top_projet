@@ -3,8 +3,6 @@
 #include <cassert>
 #include <cstddef>
 
-#include <mpi.h>
-
 #include <lbm/physics.hpp>
 
 void init_cond_velocity_0_density_1(Mesh* mesh) {
@@ -37,9 +35,6 @@ void setup_init_state_circle_obstacle(Mesh* mesh, lbm_mesh_type_t* mesh_type, co
 void setup_init_state_global_poiseuille_profile(Mesh* mesh, lbm_mesh_type_t* mesh_type, const lbm_comm_t* mesh_comm) {
   Vector v         = {0.0, 0.0};
   const double rho = 1.0;
-
-  int rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   // Apply Poiseuille distribution for all nodes except on top/bottom border
   for (size_t i = 0; i < mesh->width; i++) {

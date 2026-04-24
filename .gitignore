@@ -8,3 +8,5 @@ compile_commands.json
 *.gif
 *.png
 !ref_*
+Hao/
+build-mpi/

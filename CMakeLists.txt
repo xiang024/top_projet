@@ -12,7 +12,12 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-find_package(MPI 3.0 REQUIRED)
+option(TOP_ENABLE_MPI "Build with MPI support" ON)
+
+if(TOP_ENABLE_MPI)
+  find_package(MPI 3.0 REQUIRED)
+endif()
+
 find_package(OpenMP 4.0 REQUIRED)
 include(cmake/third-party.cmake)
 

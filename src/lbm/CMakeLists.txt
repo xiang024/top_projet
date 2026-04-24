@@ -8,6 +8,7 @@ target_sources(
       FILES
         ${PROJECT_SOURCE_DIR}/include/lbm/lib.hpp
         ${PROJECT_SOURCE_DIR}/include/lbm/config.hpp
+        ${PROJECT_SOURCE_DIR}/include/lbm/mpi.hpp
         ${PROJECT_SOURCE_DIR}/include/lbm/structures.hpp
         ${PROJECT_SOURCE_DIR}/include/lbm/communications.hpp
         ${PROJECT_SOURCE_DIR}/include/lbm/initialization.hpp
@@ -18,7 +19,11 @@ target_sources(
       FILES ${CMAKE_BINARY_DIR}/include/lbm/tpl.hpp ${CMAKE_BINARY_DIR}/include/lbm/tpl_loader.hpp
   PRIVATE config.cpp structures.cpp communications.cpp initialization.cpp physics.cpp
 )
-target_link_libraries(top.lbm-lib PRIVATE MPI::MPI_CXX OpenMP::OpenMP_CXX)
+target_link_libraries(top.lbm-lib PRIVATE OpenMP::OpenMP_CXX)
+if(TOP_ENABLE_MPI)
+  target_link_libraries(top.lbm-lib PRIVATE MPI::MPI_CXX)
+endif()
+target_compile_definitions(top.lbm-lib PUBLIC $<$<BOOL:${TOP_ENABLE_MPI}>:TOP_ENABLE_MPI>)
 target_compile_features(top.lbm-lib PUBLIC cxx_std_17)
 target_compile_options(
   top.lbm-lib

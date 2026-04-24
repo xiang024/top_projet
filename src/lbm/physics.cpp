@@ -190,7 +190,7 @@ void special_cells(Mesh* mesh, lbm_mesh_type_t* mesh_type, const lbm_comm_t* mes
   }
 
   // Loop on all inner cells for bounce-back cells (obstacle and top/bottom walls).
-  #pragma omp parallel for schedule(static)
+  #pragma omp parallel for collapse(2) schedule(static)
   for (size_t i = 1; i < mesh->width - 1; i++) {
     for (size_t j = 1; j < mesh->height - 1; j++) {
       if (*(lbm_cell_type_t_get_cell(mesh_type, i, j)) == CELL_BOUNCE_BACK) {
@@ -205,7 +205,7 @@ void collision(Mesh* mesh_out, const Mesh* mesh_in) {
   assert(mesh_in->height == mesh_out->height);
 
   // Loop on all inner cells
-  #pragma omp parallel for schedule(static)
+  #pragma omp parallel for collapse(2) schedule(static)
   for (size_t i = 1; i < mesh_in->width - 1; i++) {
     for (size_t j = 1; j < mesh_in->height - 1; j++) {
       lbm_mesh_cell_t cell_out       = Mesh_get_cell(mesh_out, i, j);

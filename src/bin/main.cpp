@@ -7,7 +7,6 @@
 #include <cstring>
 #include <ctime>
 
-#include <mpi.h>
 #include <omp.h>
 
 #include <lbm/lib.hpp>
@@ -51,12 +50,23 @@ static inline void close_file(FILE* fp) {
 }
 
 int main(int argc, char* argv[]) {
-  // Init MPI, get current rank and communicator size.
-  MPI_Init(&argc, &argv);
+  // Init MPI with thread support for OpenMP.
+  int provided;
+  MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
   int rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   int comm_size;
   MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+  // Limit OpenMP threads per MPI rank to avoid oversubscription.
+  int omp_threads = omp_get_max_threads();
+  if (comm_size > 1) {
+    omp_threads = omp_threads / comm_size;
+    if (omp_threads < 1) {
+      omp_threads = 1;
+    }
+    omp_set_num_threads(omp_threads);
+  }
 
   // Get config filename
   char* config_filename;
@@ -119,30 +129,18 @@ int main(int argc, char* argv[]) {
   for (ssize_t i = 1; i <= ITERATIONS; i++) {
     if (rank == RANK_MASTER && (i == 1 || i == ITERATIONS || i % 100 == 0)) {
       fprintf(stderr, "\rStep: %6ld/%6u", static_cast<long>(i), static_cast<unsigned>(ITERATIONS));
+      fflush(stderr);
     }
     // Compute special actions (border, obstacle...)
     special_cells(&mesh, &mesh_type, &mesh_comm);
-    // Need to wait all before doing next step
-    if (comm_size > 1) {
-      MPI_Barrier(MPI_COMM_WORLD);
-    }
-
     // Compute collision term
     collision(&temp, &mesh);
-    // Need to wait all before doing next step
-    if (comm_size > 1) {
-      MPI_Barrier(MPI_COMM_WORLD);
-    }
 
     // Propagate values from node to neighboors
     if (comm_size > 1) {
       lbm_comm_halo_exchange(&mesh_comm, &temp);
     }
     propagation(&mesh, &temp);
-    // Need to wait all before doing next step
-    if (comm_size > 1) {
-      MPI_Barrier(MPI_COMM_WORLD);
-    }
 
     // Save step
     if (i % WRITE_STEP_INTERVAL == 0 && lbm_gbl_config.output_filename != NULL) {
@@ -153,10 +151,6 @@ int main(int argc, char* argv[]) {
   const double elapsed_time  = end_time - start_time;
   const uint64_t total_cells = static_cast<uint64_t>(MESH_WIDTH) * MESH_HEIGHT * comm_size;
   const double mlups         = (static_cast<double>(total_cells) * ITERATIONS) / (elapsed_time * 1e6);
-
-  if (comm_size > 1) {
-    MPI_Barrier(MPI_COMM_WORLD);
-  }
   if (rank == RANK_MASTER) {
     if (fp != NULL) {
       close_file(fp);
