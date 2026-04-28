@@ -113,29 +113,72 @@ int main(int argc, char* argv[]) {
   }
 
   // Time steps
+  const bool enable_phase_profile = true;
+  double t_special_local          = 0.0;
+  double t_collision_local        = 0.0;
+  double t_comm_local             = 0.0;
+  double t_propagation_local      = 0.0;
+  double t_save_local             = 0.0;
+
   const double start_time = MPI_Wtime();
   for (ssize_t i = 1; i <= ITERATIONS; i++) {
     if (rank == RANK_MASTER && ((i & 127) == 0 || i == ITERATIONS)) {
-      fprintf(stderr, "\rStep: %6d/%6d", i, ITERATIONS);
+      fprintf(stderr, "\rStep: %6zd/%6d", i, ITERATIONS);
     }
+
     // Compute special actions (border, obstacle...)
+    double t0 = MPI_Wtime();
     special_cells(&mesh, &mesh_type, &mesh_comm);
+    if (enable_phase_profile) {
+      t_special_local += MPI_Wtime() - t0;
+    }
+
     // Compute collision term
+    t0 = MPI_Wtime();
     collision(&temp, &mesh);
+    if (enable_phase_profile) {
+      t_collision_local += MPI_Wtime() - t0;
+    }
 
     // Propagate values from node to neighboors
+    t0 = MPI_Wtime();
     lbm_comm_halo_exchange(&mesh_comm, &temp);
+    if (enable_phase_profile) {
+      t_comm_local += MPI_Wtime() - t0;
+    }
+
+    t0 = MPI_Wtime();
     propagation(&mesh, &temp);
+    if (enable_phase_profile) {
+      t_propagation_local += MPI_Wtime() - t0;
+    }
 
     // Save step
     if (i % WRITE_STEP_INTERVAL == 0 && lbm_gbl_config.output_filename != NULL) {
+      t0 = MPI_Wtime();
       save_frame_all_domain(fp, &mesh, &temp_render);
+      if (enable_phase_profile) {
+        t_save_local += MPI_Wtime() - t0;
+      }
     }
   }
   const double end_time      = MPI_Wtime();
   const double elapsed_time  = end_time - start_time;
   const uint64_t total_cells = static_cast<uint64_t>(MESH_WIDTH) * MESH_HEIGHT * comm_size;
   const double mlups         = (static_cast<double>(total_cells) * ITERATIONS) / (elapsed_time * 1e6);
+
+  double t_special_max     = 0.0;
+  double t_collision_max   = 0.0;
+  double t_comm_max        = 0.0;
+  double t_propagation_max = 0.0;
+  double t_save_max        = 0.0;
+  if (enable_phase_profile) {
+    MPI_Reduce(&t_special_local, &t_special_max, 1, MPI_DOUBLE, MPI_MAX, RANK_MASTER, MPI_COMM_WORLD);
+    MPI_Reduce(&t_collision_local, &t_collision_max, 1, MPI_DOUBLE, MPI_MAX, RANK_MASTER, MPI_COMM_WORLD);
+    MPI_Reduce(&t_comm_local, &t_comm_max, 1, MPI_DOUBLE, MPI_MAX, RANK_MASTER, MPI_COMM_WORLD);
+    MPI_Reduce(&t_propagation_local, &t_propagation_max, 1, MPI_DOUBLE, MPI_MAX, RANK_MASTER, MPI_COMM_WORLD);
+    MPI_Reduce(&t_save_local, &t_save_max, 1, MPI_DOUBLE, MPI_MAX, RANK_MASTER, MPI_COMM_WORLD);
+  }
 
   MPI_Barrier(MPI_COMM_WORLD);
   if (rank == RANK_MASTER) {
@@ -144,6 +187,17 @@ int main(int argc, char* argv[]) {
     }
     fprintf(stderr, "\rSIMULATION COMPLETED.\n\n");
     fprintf(stderr, "FOM:  %.2f MLUPS\n", mlups);
+    if (enable_phase_profile) {
+      const double phase_total = t_special_max + t_collision_max + t_comm_max + t_propagation_max + t_save_max;
+      if (phase_total > 0.0) {
+        fprintf(stderr, "\nPHASE PROFILE (MPI max rank time)\n");
+        fprintf(stderr, "  special_cells: %8.3fs (%5.1f%%)\n", t_special_max, 100.0 * t_special_max / phase_total);
+        fprintf(stderr, "  collision    : %8.3fs (%5.1f%%)\n", t_collision_max, 100.0 * t_collision_max / phase_total);
+        fprintf(stderr, "  halo_exchange: %8.3fs (%5.1f%%)\n", t_comm_max, 100.0 * t_comm_max / phase_total);
+        fprintf(stderr, "  propagation  : %8.3fs (%5.1f%%)\n", t_propagation_max, 100.0 * t_propagation_max / phase_total);
+        fprintf(stderr, "  save_frame   : %8.3fs (%5.1f%%)\n", t_save_max, 100.0 * t_save_max / phase_total);
+      }
+    }
   }
 
   // Free memory
