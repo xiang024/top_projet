@@ -164,7 +164,7 @@ int main(int argc, char* argv[]) {
   }
   const double end_time      = MPI_Wtime();
   const double elapsed_time  = end_time - start_time;
-  const uint64_t total_cells = static_cast<uint64_t>(MESH_WIDTH) * MESH_HEIGHT * comm_size;
+  const uint64_t total_cells = static_cast<uint64_t>(MESH_WIDTH) * MESH_HEIGHT;
   const double mlups         = (static_cast<double>(total_cells) * ITERATIONS) / (elapsed_time * 1e6);
 
   double t_special_max     = 0.0;
